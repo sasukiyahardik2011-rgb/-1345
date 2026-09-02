@@ -15,28 +15,31 @@ jobs:
 
     steps:
 
-      # 1. Checkout repository
+      # 1. Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Java 17
+      # 2. Setup Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # 3. Android SDK
+      # 3. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 4. Install required Android SDK packages
+      # 4. Install Android SDK
       - name: Install Android SDK
         shell: bash
         run: |
           yes | sdkmanager --licenses || true
+
           sdkmanager "platform-tools"
+
           sdkmanager "platforms;android-36"
+
           sdkmanager "build-tools;36.0.0"
 
       # 5. Setup Gradle
@@ -45,11 +48,13 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      # 6. Find ZIP
+      # 6. Find Game ZIP
       - name: Find Game ZIP
         shell: bash
         run: |
-          ZIP_FILE=$(find . -type f -iname "*.zip" \
+          ZIP_FILE=$(find . \
+            -type f \
+            -iname "*.zip" \
             -not -path "./.git/*" \
             | head -n 1)
 
@@ -58,93 +63,197 @@ jobs:
             exit 1
           fi
 
-          echo "ZIP found: $ZIP_FILE"
+          echo "ZIP found:"
+          echo "$ZIP_FILE"
+
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
-      # 7. Extract ZIP
+      # 7. Extract Game Project
       - name: Extract Game Project
         shell: bash
         run: |
           rm -rf extracted
+
           mkdir -p extracted
 
           unzip -o "$ZIP_FILE" -d extracted
 
-          echo "Extracted files:"
-          find extracted -maxdepth 4 -type f | head -200
+          echo "========================================"
+          echo "Extracted Project Files"
+          echo "========================================"
 
-      # 8. Find Android project
+          find extracted \
+            -maxdepth 6 \
+            -type f \
+            | head -n 250
+
+      # 8. Find Android Project
       - name: Find Android Project
         shell: bash
         run: |
           SETTINGS_FILE=$(find extracted \
             -type f \
-            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            \( \
+              -name "settings.gradle.kts" \
+              -o \
+              -name "settings.gradle" \
+            \) \
             | head -n 1)
 
           if [ -z "$SETTINGS_FILE" ]; then
             echo "ERROR: settings.gradle or settings.gradle.kts not found."
+
+            echo ""
             echo "Full extracted structure:"
-            find extracted -maxdepth 6 -type f
+
+            find extracted \
+              -maxdepth 8 \
+              -type f
+
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
-          echo "Android project found:"
+          echo "========================================"
+          echo "Android Project Found"
+          echo "========================================"
+
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      # 9. Verify project
+      # 9. Verify Android Project
       - name: Verify Android Project
         shell: bash
         run: |
+          echo "========================================"
+          echo "Checking Android Project"
+          echo "========================================"
+
           echo "Project directory:"
           echo "$PROJECT_DIR"
 
-          test -f "$PROJECT_DIR/settings.gradle.kts" \
-            || test -f "$PROJECT_DIR/settings.gradle" \
-            || {
-              echo "ERROR: Gradle settings file missing."
-              exit 1
-            }
+          if [ ! -f "$PROJECT_DIR/settings.gradle.kts" ] && \
+             [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
 
-          test -f "$PROJECT_DIR/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/build.gradle" \
-            || {
-              echo "ERROR: Root build.gradle file missing."
-              exit 1
-            }
+            echo "ERROR: Gradle settings file missing."
+            exit 1
+          fi
 
-          test -f "$PROJECT_DIR/app/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/app/build.gradle" \
-            || {
-              echo "ERROR: app/build.gradle file missing."
-              exit 1
-            }
+          if [ ! -f "$PROJECT_DIR/build.gradle.kts" ] && \
+             [ ! -f "$PROJECT_DIR/build.gradle" ]; then
 
+            echo "ERROR: Root build.gradle file missing."
+            exit 1
+          fi
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ] && \
+             [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+
+            echo "ERROR: app/build.gradle file missing."
+            exit 1
+          fi
+
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERROR: app directory not found."
+            exit 1
+          fi
+
+          echo ""
           echo "Android project verification successful."
 
-      # 10. Show Gradle information
+      # 10. Check Gradle
       - name: Check Gradle
         shell: bash
         run: |
+          echo "========================================"
+          echo "Gradle Information"
+          echo "========================================"
+
           gradle --version
+
+          echo ""
+          echo "Java Information:"
+
+          java -version
 
       # 11. Build Debug APK
       - name: Build Debug APK
         shell: bash
         run: |
+          set -o pipefail
+
+          echo "========================================"
+          echo "        PANDA GAME APK BUILD"
+          echo "========================================"
+
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
           cd "$PROJECT_DIR"
 
-          echo "Building project from:"
+          echo ""
+          echo "Current directory:"
           pwd
 
+          echo ""
           echo "Project files:"
           ls -la
 
-          echo "Starting Gradle build..."
+          echo ""
+          echo "Checking Android project..."
+
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "ERROR: settings.gradle(.kts) not found."
+            exit 1
+          fi
+
+          if [ ! -d "app" ]; then
+            echo "ERROR: app directory not found."
+            exit 1
+          fi
+
+          if [ ! -f "app/build.gradle.kts" ] && [ ! -f "app/build.gradle" ]; then
+            echo "ERROR: app/build.gradle(.kts) not found."
+            exit 1
+          fi
+
+          echo "Android project check OK."
+
+          echo ""
+          echo "Java version:"
+          java -version
+
+          echo ""
+          echo "Gradle version:"
+          gradle --version
+
+          echo ""
+          echo "Cleaning old build files..."
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+
+            ./gradlew clean \
+              --no-daemon \
+              --no-configuration-cache \
+              --no-build-cache
+          else
+            gradle clean \
+              --no-daemon \
+              --no-configuration-cache \
+              --no-build-cache
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "        STARTING APK BUILD"
+          echo "========================================"
+
+          BUILD_LOG="$RUNNER_TEMP/panda-gradle-build.log"
+
+          set +e
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
@@ -152,21 +261,84 @@ jobs:
             ./gradlew assembleDebug \
               --no-daemon \
               --no-configuration-cache \
+              --no-build-cache \
+              --refresh-dependencies \
               --stacktrace \
-              --warning-mode all
+              --warning-mode all \
+              2>&1 | tee "$BUILD_LOG"
+
+            BUILD_EXIT=${PIPESTATUS[0]}
           else
             gradle assembleDebug \
               --no-daemon \
               --no-configuration-cache \
+              --no-build-cache \
+              --refresh-dependencies \
               --stacktrace \
-              --warning-mode all
+              --warning-mode all \
+              2>&1 | tee "$BUILD_LOG"
+
+            BUILD_EXIT=${PIPESTATUS[0]}
           fi
 
-      # 12. Find APK
+          set -e
+
+          echo ""
+          echo "========================================"
+          echo "        BUILD RESULT"
+          echo "========================================"
+
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            echo "APK BUILD FAILED."
+            echo ""
+            echo "========== IMPORTANT ERROR =========="
+
+            grep -n -E \
+              "FAILURE:|What went wrong:|Execution failed for|Caused by:|error:|e: |ERROR:" \
+              "$BUILD_LOG" \
+              | head -n 80 || true
+
+            echo ""
+            echo "========== LAST BUILD LOG =========="
+
+            tail -n 120 "$BUILD_LOG" || true
+
+            echo ""
+            echo "===================================="
+
+            exit "$BUILD_EXIT"
+          fi
+
+          echo "APK BUILD SUCCESSFUL."
+
+          echo ""
+          echo "Searching generated APK..."
+
+          find . \
+            -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
+            -print
+
+          APK_COUNT=$(find . \
+            -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
+            | wc -l)
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: Build completed but APK was not found."
+            exit 1
+          fi
+
+          echo ""
+          echo "APK successfully generated."
+
+      # 12. Find Generated APK
       - name: Find Generated APK
         shell: bash
         run: |
-          echo "Searching for APK..."
+          echo "========================================"
+          echo "Searching Generated APK"
+          echo "========================================"
 
           APK=$(find "$PROJECT_DIR" \
             -type f \
@@ -176,7 +348,9 @@ jobs:
           if [ -z "$APK" ]; then
             echo "ERROR: APK was not generated."
 
-            echo "Build output folders:"
+            echo ""
+            echo "Available build output folders:"
+
             find "$PROJECT_DIR" \
               -type d \
               -path "*/build/outputs/*" \
@@ -190,7 +364,7 @@ jobs:
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-      # 13. Upload APK
+      # 13. Upload PANDA GAME APK
       - name: Upload PANDA GAME APK
         uses: actions/upload-artifact@v4
         with:
