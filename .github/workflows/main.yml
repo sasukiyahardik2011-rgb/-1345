@@ -177,7 +177,6 @@ jobs:
           echo "Java Information:"
 
           java -version
-
       # 11. Build Debug APK
       - name: Build Debug APK
         shell: bash
@@ -230,7 +229,9 @@ jobs:
           gradle --version
 
           echo ""
-          echo "Cleaning old build files..."
+          echo "========================================"
+          echo "        CLEANING PROJECT"
+          echo "========================================"
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
@@ -248,7 +249,7 @@ jobs:
 
           echo ""
           echo "========================================"
-          echo "        STARTING APK BUILD"
+          echo "        STARTING DEBUG APK BUILD"
           echo "========================================"
 
           BUILD_LOG="$RUNNER_TEMP/panda-gradle-build.log"
@@ -256,29 +257,37 @@ jobs:
           set +e
 
           if [ -f "./gradlew" ]; then
+
             chmod +x ./gradlew
 
-            ./gradlew assembleDebug \
+            JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" \
+            ./gradlew :app:assembleDebug \
               --no-daemon \
               --no-configuration-cache \
               --no-build-cache \
               --refresh-dependencies \
               --stacktrace \
               --warning-mode all \
+              -x :app:stripDebugSymbols \
               2>&1 | tee "$BUILD_LOG"
 
             BUILD_EXIT=${PIPESTATUS[0]}
+
           else
-            gradle assembleDebug \
+
+            JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" \
+            gradle :app:assembleDebug \
               --no-daemon \
               --no-configuration-cache \
               --no-build-cache \
               --refresh-dependencies \
               --stacktrace \
               --warning-mode all \
+              -x :app:stripDebugSymbols \
               2>&1 | tee "$BUILD_LOG"
 
             BUILD_EXIT=${PIPESTATUS[0]}
+
           fi
 
           set -e
@@ -289,30 +298,36 @@ jobs:
           echo "========================================"
 
           if [ "$BUILD_EXIT" -ne 0 ]; then
+
             echo "APK BUILD FAILED."
+
             echo ""
             echo "========== IMPORTANT ERROR =========="
 
             grep -n -E \
-              "FAILURE:|What went wrong:|Execution failed for|Caused by:|error:|e: |ERROR:" \
+              "FAILURE:|What went wrong:|Execution failed for|Caused by:|NullPointerException|Exception|error:|e: |ERROR:" \
               "$BUILD_LOG" \
-              | head -n 80 || true
+              | head -n 120 || true
 
             echo ""
             echo "========== LAST BUILD LOG =========="
 
-            tail -n 120 "$BUILD_LOG" || true
+            tail -n 160 "$BUILD_LOG" || true
 
             echo ""
             echo "===================================="
 
             exit "$BUILD_EXIT"
+
           fi
 
+          echo ""
           echo "APK BUILD SUCCESSFUL."
 
           echo ""
-          echo "Searching generated APK..."
+          echo "========================================"
+          echo "        SEARCHING GENERATED APK"
+          echo "========================================"
 
           find . \
             -type f \
@@ -325,12 +340,215 @@ jobs:
             | wc -l)
 
           if [ "$APK_COUNT" -eq 0 ]; then
+
             echo "ERROR: Build completed but APK was not found."
+
+            echo ""
+            echo "Searching all APK files:"
+
+            find . \
+              -type f \
+              -name "*.apk" \
+              # 11. Build Debug APK
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+
+          echo "========================================"
+          echo "        PANDA GAME APK BUILD"
+          echo "========================================"
+
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
+          cd "$PROJECT_DIR"
+
+          echo ""
+          echo "Current directory:"
+          pwd
+
+          echo ""
+          echo "Project files:"
+          ls -la
+
+          echo ""
+          echo "Checking Android project..."
+
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "ERROR: settings.gradle(.kts) not found."
             exit 1
+          fi
+
+          if [ ! -d "app" ]; then
+            echo "ERROR: app directory not found."
+            exit 1
+          fi
+
+          if [ ! -f "app/build.gradle.kts" ] && [ ! -f "app/build.gradle" ]; then
+            echo "ERROR: app/build.gradle(.kts) not found."
+            exit 1
+          fi
+
+          echo "Android project check OK."
+
+          echo ""
+          echo "Java version:"
+          java -version
+
+          echo ""
+          echo "Gradle version:"
+          gradle --version
+
+          echo ""
+          echo "========================================"
+          echo "        CLEANING PROJECT"
+          echo "========================================"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+
+            ./gradlew clean \
+              --no-daemon \
+              --no-configuration-cache \
+              --no-build-cache
+          else
+            gradle clean \
+              --no-daemon \
+              --no-configuration-cache \
+              --no-build-cache
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "        STARTING DEBUG APK BUILD"
+          echo "========================================"
+
+          BUILD_LOG="$RUNNER_TEMP/panda-gradle-build.log"
+
+          set +e
+
+          if [ -f "./gradlew" ]; then
+
+            chmod +x ./gradlew
+
+            JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" \
+            ./gradlew :app:assembleDebug \
+              --no-daemon \
+              --no-configuration-cache \
+              --no-build-cache \
+              --refresh-dependencies \
+              --stacktrace \
+              --warning-mode all \
+              -x :app:stripDebugSymbols \
+              2>&1 | tee "$BUILD_LOG"
+
+            BUILD_EXIT=${PIPESTATUS[0]}
+
+          else
+
+            JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" \
+            gradle :app:assembleDebug \
+              --no-daemon \
+              --no-configuration-cache \
+              --no-build-cache \
+              --refresh-dependencies \
+              --stacktrace \
+              --warning-mode all \
+              -x :app:stripDebugSymbols \
+              2>&1 | tee "$BUILD_LOG"
+
+            BUILD_EXIT=${PIPESTATUS[0]}
+
+          fi
+
+          set -e
+
+          echo ""
+          echo "========================================"
+          echo "        BUILD RESULT"
+          echo "========================================"
+
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+
+            echo "APK BUILD FAILED."
+
+            echo ""
+            echo "========== IMPORTANT ERROR =========="
+
+            grep -n -E \
+              "FAILURE:|What went wrong:|Execution failed for|Caused by:|NullPointerException|Exception|error:|e: |ERROR:" \
+              "$BUILD_LOG" \
+              | head -n 120 || true
+
+            echo ""
+            echo "========== LAST BUILD LOG =========="
+
+            tail -n 160 "$BUILD_LOG" || true
+
+            echo ""
+            echo "===================================="
+
+            exit "$BUILD_EXIT"
+
+          fi
+
+          echo ""
+          echo "APK BUILD SUCCESSFUL."
+
+          echo ""
+          echo "========================================"
+          echo "        SEARCHING GENERATED APK"
+          echo "========================================"
+
+          find . \
+            -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
+            -print
+
+          APK_COUNT=$(find . \
+            -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
+            | wc -l)
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+
+            echo "ERROR: Build completed but APK was not found."
+
+            echo ""
+            echo "Searching all APK files:"
+
+            find . \
+              -type f \
+              -name "*.apk" \
+              -print
+
+            exit 1
+
           fi
 
           echo ""
           echo "APK successfully generated."
+
+          APK=$(find . \
+            -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
+            | head -n 1)
+
+          echo ""
+          echo "Generated APK:"
+          echo "$APK"
+
+          echo ""
+          echo "APK size:"
+          du -h "$APK"
+
+          echo ""
+          echo "========================================"
+          echo "        PANDA GAME APK READY"
+          echo "========================================"      -print
+
+
 
       # 12. Find Generated APK
       - name: Find Generated APK
