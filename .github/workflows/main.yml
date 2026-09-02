@@ -22,26 +22,82 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "9.3.1"
 
-      - name: Verify Android project
+      - name: Find Android project
         shell: bash
         run: |
           set -e
-          test -f settings.gradle.kts
-          test -f build.gradle.kts
-          test -f app/build.gradle.kts
-          echo "Android project found at repository root."
+
+          echo "Searching for Android project..."
+
+          PROJECT_DIR=$(find . -type f -name "settings.gradle.kts" \
+            -not -path "./.git/*" \
+            -printf '%h\n' | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: settings.gradle.kts not found!"
+            echo "Repository files:"
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          echo "Android project found:"
+          echo "$PROJECT_DIR"
+
+          if [ ! -f "$PROJECT_DIR/build.gradle.kts" ]; then
+            echo "ERROR: build.gradle.kts not found!"
+            exit 1
+          fi
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: app/build.gradle.kts not found!"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Check Android project files
+        shell: bash
+        run: |
+          set -e
+
+          echo "Project directory: $PROJECT_DIR"
+
+          ls -la "$PROJECT_DIR"
+
+          echo "Checking app folder..."
+          ls -la "$PROJECT_DIR/app"
 
       - name: Build Debug APK
-        run: gradle --no-daemon assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          echo "Building PANDA GAME APK..."
+          gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Find APK
+        shell: bash
+        run: |
+          set -e
+
+          echo "Searching for generated APK..."
+
+          find "$PROJECT_DIR/app/build/outputs/apk" \
+            -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PANDA-GAME-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: "**/app/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
