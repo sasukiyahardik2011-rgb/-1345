@@ -1,10 +1,10 @@
 name: Build PANDA GAME APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,91 +14,107 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "9.3.1"
 
-      - name: Find and Extract Game ZIP
+      - name: Extract Game ZIP
         shell: bash
         run: |
           set -e
 
-          echo "Searching for PANDA GAME ZIP..."
+          echo "Searching ZIP file..."
 
-          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" \
+          ZIP_FILE=$(find . -type f -iname "*.zip" \
             -not -path "./.git/*" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found!"
+            echo "ERROR: ZIP file not found!"
             exit 1
           fi
 
-          echo "ZIP found:"
+          echo "ZIP file found:"
           echo "$ZIP_FILE"
 
-          mkdir -p game
+          mkdir -p extracted
 
           echo "Extracting ZIP..."
-          unzip -o "$ZIP_FILE" -d game
 
-          echo "ZIP extracted successfully."
+          unzip -o "$ZIP_FILE" -d extracted
+
+          echo "Extraction completed."
+
+      - name: Find Android Project
+        shell: bash
+        run: |
+          set -e
 
           echo "Searching for Android project..."
 
-          SETTINGS_FILE=$(find game -type f -name "settings.gradle.kts" | head -n 1)
+          SETTINGS=$(find extracted \
+            -type f \
+            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            | head -n 1)
 
-          if [ -z "$SETTINGS_FILE" ]; then
-            SETTINGS_FILE=$(find game -type f -name "settings.gradle" | head -n 1)
-          fi
-
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: Android project not found after extraction!"
-            echo "Extracted files:"
-            find game -maxdepth 5 -type f | sort
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: Android project not found!"
+            echo "Files found after extraction:"
+            find extracted -maxdepth 6 -type f | sort
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
           echo "Android project found:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Check Android Project
+      - name: Verify Android Project
         shell: bash
         run: |
           set -e
 
-          echo "Project:"
-          echo "$PROJECT_DIR"
+          echo "Checking project..."
+
+          cd "$PROJECT_DIR"
+
+          echo "Project directory:"
+          pwd
 
           echo "Project files:"
-          ls -la "$PROJECT_DIR"
+          ls -la
 
-          test -f "$PROJECT_DIR/settings.gradle.kts" \
-            || test -f "$PROJECT_DIR/settings.gradle"
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "ERROR: settings.gradle file missing!"
+            exit 1
+          fi
 
-          test -f "$PROJECT_DIR/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/build.gradle"
+          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
+            echo "ERROR: build.gradle file missing!"
+            exit 1
+          fi
 
-          test -f "$PROJECT_DIR/app/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/app/build.gradle"
+          if [ ! -d "app" ]; then
+            echo "ERROR: app folder missing!"
+            exit 1
+          fi
 
-          echo "Android project check completed."
+          echo "Android project verified successfully."
 
       - name: Build Debug APK
         shell: bash
@@ -107,21 +123,32 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "Building PANDA GAME APK..."
+          echo "Starting APK build..."
 
           if [ -f "./gradlew" ]; then
+
             chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon --stacktrace
+
+            ./gradlew assembleDebug \
+              --no-daemon \
+              --stacktrace
+
           else
-            gradle assembleDebug --no-daemon --stacktrace
+
+            gradle assembleDebug \
+              --no-daemon \
+              --stacktrace
+
           fi
 
-      - name: Find APK
+          echo "APK build completed."
+
+      - name: Find Generated APK
         shell: bash
         run: |
           set -e
 
-          echo "Searching for APK..."
+          echo "Searching generated APK..."
 
           find "$PROJECT_DIR" \
             -type f \
@@ -132,5 +159,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PANDA-GAME-APK
-          path: "**/*.apk"
+          path: |
+            extracted/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
