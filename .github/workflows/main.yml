@@ -2,7 +2,8 @@ name: Build PANDA GAME APK
 
 on:
   push:
-    branches: ["**"]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -30,50 +31,74 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Find Android project
+      - name: Find and Extract Game ZIP
         shell: bash
         run: |
           set -e
 
-          echo "Searching for Android project..."
+          echo "Searching for PANDA GAME ZIP..."
 
-          PROJECT_DIR=$(find . -type f -name "settings.gradle.kts" \
-            -not -path "./.git/*" \
-            -printf '%h\n' | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" \
+            -not -path "./.git/*" | head -n 1)
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: settings.gradle.kts not found!"
-            echo "Repository files:"
-            find . -maxdepth 4 -type f | sort
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found!"
             exit 1
           fi
+
+          echo "ZIP found:"
+          echo "$ZIP_FILE"
+
+          mkdir -p game
+
+          echo "Extracting ZIP..."
+          unzip -o "$ZIP_FILE" -d game
+
+          echo "ZIP extracted successfully."
+
+          echo "Searching for Android project..."
+
+          SETTINGS_FILE=$(find game -type f -name "settings.gradle.kts" | head -n 1)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            SETTINGS_FILE=$(find game -type f -name "settings.gradle" | head -n 1)
+          fi
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: Android project not found after extraction!"
+            echo "Extracted files:"
+            find game -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
           echo "Android project found:"
           echo "$PROJECT_DIR"
 
-          if [ ! -f "$PROJECT_DIR/build.gradle.kts" ]; then
-            echo "ERROR: build.gradle.kts not found!"
-            exit 1
-          fi
-
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERROR: app/build.gradle.kts not found!"
-            exit 1
-          fi
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Check Android project files
+      - name: Check Android Project
         shell: bash
         run: |
           set -e
 
-          echo "Project directory: $PROJECT_DIR"
+          echo "Project:"
+          echo "$PROJECT_DIR"
 
+          echo "Project files:"
           ls -la "$PROJECT_DIR"
 
-          echo "Checking app folder..."
-          ls -la "$PROJECT_DIR/app"
+          test -f "$PROJECT_DIR/settings.gradle.kts" \
+            || test -f "$PROJECT_DIR/settings.gradle"
+
+          test -f "$PROJECT_DIR/build.gradle.kts" \
+            || test -f "$PROJECT_DIR/build.gradle"
+
+          test -f "$PROJECT_DIR/app/build.gradle.kts" \
+            || test -f "$PROJECT_DIR/app/build.gradle"
+
+          echo "Android project check completed."
 
       - name: Build Debug APK
         shell: bash
@@ -83,21 +108,29 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "Building PANDA GAME APK..."
-          gradle --no-daemon assembleDebug --stacktrace
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
 
       - name: Find APK
         shell: bash
         run: |
           set -e
 
-          echo "Searching for generated APK..."
+          echo "Searching for APK..."
 
-          find "$PROJECT_DIR/app/build/outputs/apk" \
-            -type f -name "*.apk" -print
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PANDA-GAME-APK
-          path: "**/app/build/outputs/apk/debug/*.apk"
+          path: "**/*.apk"
           if-no-files-found: error
